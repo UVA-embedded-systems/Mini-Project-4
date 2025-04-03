@@ -206,7 +206,14 @@ unsigned long OS_Id(void) {
 // input:  pointer to a counting semaphore
 // output: none
 void OS_Wait(Sema4Type *semaPt){
-
+	OS_DisableInterrupts();
+	while (semaPt->Value == 0){
+		OS_EnableInterrupts();
+		OS_Suspend();
+		OS_DisableInterrupts();
+	}
+	semaPt->Value -= 1;
+	OS_EnableInterrupts();
 }
 
 // ******** OS_Signal ************
@@ -214,7 +221,9 @@ void OS_Wait(Sema4Type *semaPt){
 // input:  pointer to a counting semaphore
 // output: none
 void OS_Signal(Sema4Type *semaPt){
-
+	OS_DisableInterrupts();
+	semaPt->Value += 1;
+	OS_EnableInterrupts();
 }
 
 // ******** OS_InitSemaphore ************
@@ -222,21 +231,32 @@ void OS_Signal(Sema4Type *semaPt){
 // input:  pointer to a semaphore
 // output: none
 void OS_InitSemaphore(Sema4Type *semaPt, long value){
-
+	OS_DisableInterrupts();
+	semaPt->Value = value;
+	OS_EnableInterrupts();
 }
 
 // ******** OS_bWait ************
 // input:  pointer to a binary semaphore
 // output: none
 void OS_bWait(Sema4Type *semaPt){
-	
+	OS_DisableInterrupts();
+	while (semaPt->Value == 0){
+		OS_EnableInterrupts();
+		OS_Suspend();
+		OS_DisableInterrupts();
+	}
+	semaPt->Value = 0;
+	OS_EnableInterrupts();
 }	
 
 // ******** OS_bSignal ************ 
 // input:  pointer to a binary semaphore
 // output: none
 void OS_bSignal(Sema4Type *semaPt){
-	
+	OS_DisableInterrupts();
+	semaPt->Value = 1;
+	OS_EnableInterrupts();
 }
 
 // ******** OS_Sleep ************
@@ -245,7 +265,8 @@ void OS_bSignal(Sema4Type *semaPt){
 // output: none
 // OS_Sleep(0) implements cooperative multitasking
 void OS_Sleep(unsigned long sleepTime){
-	
+	RunPt->sleepCt = sleepTime;
+	OS_Suspend();
 }
 
 // ******** OS_Kill ************
@@ -268,6 +289,9 @@ void OS_Kill(void){
 
 void Scheduler(void){
 	RunPt = RunPt->next;
+	while(RunPt->sleepCt){
+		RunPt = RunPt->next;
+	}
 }
 
 //******** OS_AddPeriodicThread *************** 
@@ -409,6 +433,11 @@ void Timer2A_Handler(void){
 	TIMER2_ICR_R = TIMER_ICR_TATOCINT;// acknowledge timer2A timeout
 	MSTime++;
 	
+	for(i = 0; i < NUMTHREADS; i++) {
+		if((!tcbs[i].available) && tcbs[i].sleepCt) {
+			tcbs[i].sleepCt -= 1;
+		}
+	}
 }
 
 void InitTimer3A(void) {
@@ -565,7 +594,8 @@ void GPIOPortD_Handler(void) {  // called on touch of either SW1 or SW2
 // This task can call OS_Signal  OS_bSignal	 OS_AddThread
 // This task does not have a Thread ID
 int OS_AddSW1Task(void(*task)(void), unsigned long priority) { 
-
+	ButtonOneTask = task;
+	ButtonOneInit(priority);
 	return 1;
 }
 
@@ -579,6 +609,7 @@ int OS_AddSW1Task(void(*task)(void), unsigned long priority) {
 // This task can call issue OS_Signal, it can call OS_AddThread
 // This task does not have a Thread ID
 int OS_AddSW2Task(void(*task)(void), unsigned long priority) { 
-
+	ButtonTwoTask = task;
+	ButtonTwoInit(priority);
 	return 1;
 }
